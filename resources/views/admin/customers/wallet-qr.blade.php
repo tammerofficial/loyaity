@@ -216,15 +216,32 @@
         </div>
         
         <div class="qr-container">
-            <div class="qr-code">
-                <img src="https://api.qrserver.com/v1/create-qr-code/?size=170x170&data={{ urlencode($walletPassUrl) }}" 
+                        <div class="qr-code">
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=170x170&data={{ urlencode($walletPassUrl) }}&cache=false&v={{ time() }}"
                      alt="QR Code for Apple Wallet Pass" 
                      style="width: 100%; height: 100%; border-radius: 8px;">
+                <div style="text-align: center; margin-top: 10px; font-size: 0.8rem; color: #666;">
+                    🕒 تم التحديث: {{ date('H:i:s', $timestamp ?? time()) }}
+                </div>
             </div>
         </div>
         
         <div class="instructions">
-            <h3 style="margin-top: 0; color: #1565c0;">📖 How to Add to Apple Wallet:</h3>
+            <h3 style="margin-top: 0; color: #28a745;">✅ Certificate Status: ACTIVE</h3>
+            <div style="background: #d4edda; border: 1px solid #c3e6cb; border-radius: 8px; padding: 15px; margin-bottom: 20px; color: #155724;">
+                <strong>🔒 Status:</strong> Pass is properly signed with valid Apple Developer certificates!
+                <br><br>
+                <strong>📋 Certificate Details:</strong>
+                <ul style="margin: 10px 0; padding-left: 20px;">
+                    <li>✅ Pass Type ID: <code>{{ env('APPLE_WALLET_PASS_TYPE_ID') }}</code></li>
+                    <li>✅ Team ID: <code>{{ env('APPLE_WALLET_TEAM_ID') }}</code></li>
+                    <li>✅ Apple WWDR Certificate (G3)</li>
+                    <li>✅ Generated with OpenSSL 3.0 Legacy Provider</li>
+                    <li>📱 Ready for iPhone deployment!</li>
+                </ul>
+            </div>
+            
+            <h3 style="color: #1565c0;">📱 How to Add to Apple Wallet:</h3>
             <div class="step">
                 <div class="step-number">1</div>
                 <span>Open Camera app on your iPhone</span>

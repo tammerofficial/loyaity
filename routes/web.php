@@ -14,4 +14,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::resource('customers', AdminCustomerController::class);
     Route::get('/customers/{customer}/wallet-pass', [AdminCustomerController::class, 'generateWalletPass'])->name('customers.wallet-pass');
     Route::get('/customers/{customer}/wallet-qr', [AdminCustomerController::class, 'showWalletQR'])->name('customers.wallet-qr');
+    Route::get('/customers/{customer}/wallet-preview', [AdminCustomerController::class, 'previewWalletDesign'])->name('customers.wallet-preview');
+    Route::post('/customers/{customer}/wallet-design', [AdminCustomerController::class, 'saveWalletDesign'])->name('customers.wallet-design');
+    Route::post('/wallet-design/global', [AdminCustomerController::class, 'saveGlobalWalletDesign'])->name('wallet-design.global');
 });

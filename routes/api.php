@@ -42,6 +42,9 @@ Route::prefix('v1')->group(function () {
         // Generate and download pass
         Route::get('customers/{customer}/pass', [AppleWalletController::class, 'generatePass']);
         
+        // Force update pass (for dashboard)
+        Route::post('passes/{serialNumber}/force-update', [AppleWalletController::class, 'forceUpdatePass']);
+        
         // Apple Wallet web service endpoints
         Route::get('passes/{passTypeId}/{serialNumber}', [AppleWalletController::class, 'getPass']);
         Route::post('devices/{deviceLibraryIdentifier}/registrations/{passTypeId}/{serialNumber}', [AppleWalletController::class, 'registerDevice']);

@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Laravel\Sanctum\HasApiTokens;
+use App\Jobs\GenerateWalletPassJob;
 
 class Customer extends Model
 {
@@ -96,5 +97,35 @@ class Customer extends Model
         }
 
         $this->save();
+    }
+    
+    /**
+     * Boot the model
+     */
+    protected static function boot()
+    {
+        parent::boot();
+        
+        // Auto-generate wallet pass after creating customer
+        static::created(function ($customer) {
+            static::generateWalletPass($customer);
+        });
+        
+        // Auto-regenerate wallet pass after updating customer  
+        static::updated(function ($customer) {
+            // Only regenerate if membership_number, name, or tier changed
+            if ($customer->isDirty(['membership_number', 'name', 'tier', 'total_points', 'available_points'])) {
+                static::generateWalletPass($customer);
+            }
+        });
+    }
+    
+    /**
+     * Generate Apple Wallet pass file for customer (dispatch job)
+     */
+    public static function generateWalletPass($customer)
+    {
+        // Dispatch job to background queue for better performance
+        GenerateWalletPassJob::dispatch($customer->id)->delay(now()->addSeconds(2));
     }
 }

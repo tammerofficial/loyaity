@@ -19,6 +19,7 @@
                                 <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
                                 <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tier</th>
                                 <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Available Points</th>
+                                <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">🍎 Apple Wallet</th>
                                 <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
@@ -30,6 +31,25 @@
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ $customer->phone }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ $customer->tier }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ number_format($customer->available_points) }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-center">
+                                        <div class="flex justify-center space-x-1">
+                                            <a href="{{ route('admin.customers.wallet-preview', $customer) }}" 
+                                               class="inline-flex items-center px-2 py-1 bg-purple-600 text-white text-xs rounded-md hover:bg-purple-700" 
+                                               title="Preview Design">
+                                                🎨
+                                            </a>
+                                            <a href="{{ route('admin.customers.wallet-qr', $customer) }}" 
+                                               class="inline-flex items-center px-2 py-1 bg-blue-600 text-white text-xs rounded-md hover:bg-blue-700" 
+                                               title="Show QR Code">
+                                                📱
+                                            </a>
+                                            <a href="{{ route('admin.customers.wallet-pass', $customer) }}" 
+                                               class="inline-flex items-center px-2 py-1 bg-black text-white text-xs rounded-md hover:bg-gray-800" 
+                                               title="Download Pass">
+                                                💳
+                                            </a>
+                                        </div>
+                                    </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                         <a href="{{ route('admin.customers.edit', $customer) }}" class="text-blue-600 hover:text-blue-900">Edit</a>
                                     </td>
