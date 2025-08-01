@@ -1,0 +1,34 @@
+#!/bin/bash
+
+# Git Post-Receive Hook
+# يتم تشغيله تلقائياً بعد git push
+
+set -e
+
+# Colors
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+echo -e "${BLUE}🚀 Auto-deployment triggered...${NC}"
+
+# Navigate to project directory
+cd /path/to/your/project || exit 1
+
+# Run auto deployment
+if [ -f "auto-deploy.sh" ]; then
+    ./auto-deploy.sh
+    echo -e "${GREEN}✅ Deployment completed successfully!${NC}"
+else
+    echo "Warning: auto-deploy.sh not found"
+    
+    # Fallback deployment
+    composer install --no-dev --optimize-autoloader --no-interaction
+    php artisan migrate --force
+    php artisan config:cache
+    php artisan route:cache
+    php artisan view:cache
+    chmod -R 755 storage bootstrap/cache
+    
+    echo -e "${GREEN}✅ Basic deployment completed!${NC}"
+fi

@@ -3,7 +3,10 @@
     "name": "laravel/laravel",
     "type": "project",
     "description": "The skeleton application for the Laravel framework.",
-    "keywords": ["laravel", "framework"],
+    "keywords": [
+        "laravel",
+        "framework"
+    ],
     "license": "MIT",
     "require": {
         "php": "^8.2",
@@ -41,7 +44,13 @@
             "@php artisan package:discover --ansi"
         ],
         "post-update-cmd": [
-            "@php artisan vendor:publish --tag=laravel-assets --ansi --force"
+            "@php artisan vendor:publish --tag=laravel-assets --ansi --force",
+            "@php artisan migrate --force",
+            "@php artisan config:cache",
+            "@php artisan route:cache",
+            "@php artisan view:cache",
+            "@php -r \"if (DIRECTORY_SEPARATOR === '/') { exec('chmod -R 755 storage'); exec('chmod -R 755 bootstrap/cache'); echo 'Permissions updated\\n'; }\"",
+            "echo 'Laravel update completed successfully! ✅'"
         ],
         "post-root-package-install": [
             "@php -r \"file_exists('.env') || copy('.env.example', '.env');\""
@@ -58,6 +67,65 @@
         "test": [
             "@php artisan config:clear --ansi",
             "@php artisan test"
+        ],
+        "post-install-cmd": [
+            "@php -r \"if (!file_exists('.env')) { copy('.env.example', '.env'); echo '.env file created from .env.example\\n'; }\"",
+            "@php artisan key:generate --ansi --force",
+            "@php -r \"if (!is_dir('storage/logs')) { mkdir('storage/logs', 0755, true); echo 'Created storage/logs directory\\n'; }\"",
+            "@php -r \"if (!is_dir('bootstrap/cache')) { mkdir('bootstrap/cache', 0755, true); echo 'Created bootstrap/cache directory\\n'; }\"",
+            "@php -r \"if (DIRECTORY_SEPARATOR === '/') { exec('chmod -R 755 storage'); exec('chmod -R 755 bootstrap/cache'); echo 'Permissions set for Unix/Linux\\n'; } else { echo 'Windows detected - permissions not set\\n'; }\"",
+            "@php artisan storage:link",
+            "@php artisan config:cache",
+            "@php artisan route:cache",
+            "@php artisan view:cache",
+            "echo 'Laravel auto-installation completed successfully! 🎉'"
+        ],
+        "deploy": [
+            "@php artisan down --retry=60",
+            "@php artisan config:clear",
+            "@php artisan cache:clear",
+            "@php artisan route:clear",
+            "@php artisan view:clear",
+            "@php artisan migrate --force",
+            "@php artisan config:cache",
+            "@php artisan route:cache",
+            "@php artisan view:cache",
+            "@php artisan up",
+            "echo 'Deployment completed! 🚀'"
+        ],
+        "fresh": [
+            "@php artisan migrate:fresh --seed",
+            "@php artisan config:cache",
+            "@php artisan route:cache",
+            "@php artisan view:cache",
+            "echo 'Fresh installation with seed data completed! 🌱'"
+        ],
+        "optimize": [
+            "@php artisan config:cache",
+            "@php artisan route:cache",
+            "@php artisan view:cache",
+            "@php artisan storage:link",
+            "echo 'Application optimized! ⚡'"
+        ],
+        "clear-all": [
+            "@php artisan config:clear",
+            "@php artisan cache:clear",
+            "@php artisan route:clear",
+            "@php artisan view:clear",
+            "@php artisan queue:clear",
+            "echo 'All caches cleared! 🧹'"
+        ],
+        "install-fresh": [
+            "Composer\\Config::disableProcessTimeout",
+            "@clear-all",
+            "@post-install-cmd",
+            "@fresh"
+        ],
+        "install-production": [
+            "Composer\\Config::disableProcessTimeout",
+            "@post-install-cmd",
+            "@php artisan migrate --force",
+            "@optimize"
         ]
     },
     "extra": {

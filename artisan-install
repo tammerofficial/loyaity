@@ -1,0 +1,364 @@
+#!/usr/bin/env php
+<?php
+
+/**
+ * Laravel Installation Command
+ * يأمر تثبيت Laravel تلقائيا
+ * 
+ * Usage: php artisan-install
+ */
+
+use Illuminate\Support\Facades\Artisan;
+
+define('LARAVEL_START', microtime(true));
+
+// Register the Composer autoloader
+require __DIR__.'/vendor/autoload.php';
+
+// Bootstrap Laravel application
+$app = require_once __DIR__.'/bootstrap/app.php';
+
+class LaravelInstaller
+{
+    private $output;
+    private $isProduction;
+    
+    public function __construct()
+    {
+        $this->output = new \Symfony\Component\Console\Output\ConsoleOutput();
+        $this->isProduction = env('APP_ENV', 'production') === 'production';
+    }
+    
+    public function install()
+    {
+        $this->printHeader();
+        
+        try {
+            $this->checkRequirements();
+            $this->setupEnvironment();
+            $this->installDependencies();
+            $this->configureDatabase();
+            $this->optimizeApplication();
+            $this->finalizeInstallation();
+            
+            $this->printSuccess();
+        } catch (Exception $e) {
+            $this->printError('Installation failed: ' . $e->getMessage());
+            exit(1);
+        }
+    }
+    
+    private function printHeader()
+    {
+        $this->output->writeln('<fg=blue>');
+        $this->output->writeln('====================================');
+        $this->output->writeln('   Laravel Auto Installation');
+        $this->output->writeln('====================================');
+        $this->output->writeln('</>');
+    }
+    
+    private function checkRequirements()
+    {
+        $this->output->writeln('<fg=yellow>🔍 Checking requirements...</>');
+        
+        // Check PHP version
+        if (version_compare(PHP_VERSION, '8.2.0', '<')) {
+            throw new Exception('PHP 8.2+ is required. Current version: ' . PHP_VERSION);
+        }
+        
+        // Check required extensions
+        $required = ['curl', 'fileinfo', 'gd', 'mbstring', 'openssl', 'pdo', 'tokenizer', 'xml', 'zip'];
+        foreach ($required as $ext) {
+            if (!extension_loaded($ext)) {
+                throw new Exception("Required PHP extension missing: {$ext}");
+            }
+        }
+        
+        // Check Laravel installation
+        if (!file_exists(__DIR__ . '/artisan')) {
+            throw new Exception('This is not a Laravel project (artisan not found)');
+        }
+        
+        $this->output->writeln('<fg=green>✓ All requirements met</>');
+    }
+    
+    private function setupEnvironment()
+    {
+        $this->output->writeln('<fg=yellow>⚙️ Setting up environment...</>');
+        
+        // Create .env from .env.example if it doesn't exist
+        if (!file_exists('.env') && file_exists('.env.example')) {
+            copy('.env.example', '.env');
+            $this->output->writeln('<fg=green>✓ Created .env from .env.example</>');
+        }
+        
+        // Generate app key if not exists
+        if (empty(env('APP_KEY'))) {
+            $this->runArtisan('key:generate', ['--force' => true]);
+            $this->output->writeln('<fg=green>✓ Application key generated</>');
+        }
+        
+        // Set production environment settings
+        if ($this->isProduction) {
+            $this->updateEnvFile([
+                'APP_ENV' => 'production',
+                'APP_DEBUG' => 'false',
+                'LOG_LEVEL' => 'error'
+            ]);
+            $this->output->writeln('<fg=green>✓ Production environment configured</>');
+        }
+    }
+    
+    private function installDependencies()
+    {
+        $this->output->writeln('<fg=yellow>📦 Installing dependencies...</>');
+        
+        // Install Composer dependencies
+        if (file_exists('composer.json')) {
+            $command = 'composer install';
+            if ($this->isProduction) {
+                $command .= ' --no-dev --optimize-autoloader --no-interaction';
+            }
+            
+            exec($command . ' 2>&1', $output, $returnCode);
+            if ($returnCode !== 0) {
+                throw new Exception('Composer install failed: ' . implode("\n", $output));
+            }
+            $this->output->writeln('<fg=green>✓ Composer dependencies installed</>');
+        }
+        
+        // Install NPM dependencies and build assets
+        if (file_exists('package.json')) {
+            $nodeManager = $this->detectNodeManager();
+            if ($nodeManager) {
+                $installCmd = $nodeManager === 'npm' ? 'npm ci' : 'yarn install';
+                $buildCmd = $nodeManager === 'npm' ? 'npm run build' : 'yarn build';
+                
+                exec($installCmd . ' 2>&1', $output, $returnCode);
+                if ($returnCode === 0) {
+                    exec($buildCmd . ' 2>&1', $output, $returnCode);
+                    if ($returnCode === 0) {
+                        $this->output->writeln('<fg=green>✓ Assets built successfully</>');
+                    } else {
+                        $this->output->writeln('<fg=yellow>⚠ Asset build failed</>');
+                    }
+                } else {
+                    $this->output->writeln('<fg=yellow>⚠ Node dependencies installation failed</>');
+                }
+            }
+        }
+    }
+    
+    private function configureDatabase()
+    {
+        $this->output->writeln('<fg=yellow>🗄️ Configuring database...</>');
+        
+        try {
+            // Test database connection
+            $this->runArtisan('migrate:status');
+            
+            // Run migrations
+            $this->runArtisan('migrate', ['--force' => true]);
+            $this->output->writeln('<fg=green>✓ Database migrations completed</>');
+            
+            // Run seeders in development
+            if (!$this->isProduction) {
+                try {
+                    $this->runArtisan('db:seed', ['--force' => true]);
+                    $this->output->writeln('<fg=green>✓ Database seeded</>');
+                } catch (Exception $e) {
+                    $this->output->writeln('<fg=yellow>⚠ Database seeding skipped</>');
+                }
+            }
+            
+        } catch (Exception $e) {
+            $this->output->writeln('<fg=yellow>⚠ Database configuration incomplete - please check .env settings</>');
+        }
+    }
+    
+    private function optimizeApplication()
+    {
+        $this->output->writeln('<fg=yellow>⚡ Optimizing application...</>');
+        
+        // Clear all caches
+        $this->runArtisan('config:clear');
+        $this->runArtisan('cache:clear');
+        $this->runArtisan('route:clear');
+        $this->runArtisan('view:clear');
+        
+        // Create storage link
+        if (!file_exists('public/storage')) {
+            $this->runArtisan('storage:link');
+            $this->output->writeln('<fg=green>✓ Storage link created</>');
+        }
+        
+        // Cache for production
+        if ($this->isProduction) {
+            $this->runArtisan('config:cache');
+            $this->runArtisan('route:cache');
+            $this->runArtisan('view:cache');
+            $this->output->writeln('<fg=green>✓ Application optimized for production</>');
+        }
+        
+        // Set file permissions
+        $this->setPermissions();
+    }
+    
+    private function finalizeInstallation()
+    {
+        $this->output->writeln('<fg=yellow>🔧 Finalizing installation...</>');
+        
+        // Create deployment info
+        $deploymentInfo = [
+            'installed_at' => date('Y-m-d H:i:s'),
+            'environment' => env('APP_ENV', 'production'),
+            'php_version' => PHP_VERSION,
+            'laravel_version' => app()->version(),
+            'server_info' => [
+                'hostname' => gethostname(),
+                'os' => PHP_OS,
+                'architecture' => php_uname('m')
+            ]
+        ];
+        
+        file_put_contents('installation-info.json', json_encode($deploymentInfo, JSON_PRETTY_PRINT));
+        
+        // Create health check endpoint
+        $this->createHealthCheck();
+        
+        $this->output->writeln('<fg=green>✓ Installation finalized</>');
+    }
+    
+    private function runArtisan($command, $parameters = [])
+    {
+        $kernel = $GLOBALS['app']->make(Illuminate\Contracts\Console\Kernel::class);
+        
+        $input = new \Symfony\Component\Console\Input\ArrayInput(
+            array_merge(['command' => $command], $parameters)
+        );
+        
+        $output = new \Symfony\Component\Console\Output\BufferedOutput();
+        
+        $exitCode = $kernel->handle($input, $output);
+        
+        if ($exitCode !== 0) {
+            throw new Exception("Artisan command '{$command}' failed: " . $output->fetch());
+        }
+        
+        return $output->fetch();
+    }
+    
+    private function updateEnvFile($updates)
+    {
+        if (!file_exists('.env')) {
+            return;
+        }
+        
+        $env = file_get_contents('.env');
+        
+        foreach ($updates as $key => $value) {
+            $pattern = "/^{$key}=.*/m";
+            $replacement = "{$key}={$value}";
+            
+            if (preg_match($pattern, $env)) {
+                $env = preg_replace($pattern, $replacement, $env);
+            } else {
+                $env .= "\n{$replacement}";
+            }
+        }
+        
+        file_put_contents('.env', $env);
+    }
+    
+    private function detectNodeManager()
+    {
+        if (shell_exec('which npm') !== null) {
+            return 'npm';
+        } elseif (shell_exec('which yarn') !== null) {
+            return 'yarn';
+        }
+        return null;
+    }
+    
+    private function setPermissions()
+    {
+        $directories = ['storage', 'bootstrap/cache'];
+        
+        foreach ($directories as $dir) {
+            if (is_dir($dir)) {
+                chmod($dir, 0755);
+                $this->chmodRecursive($dir, 0755);
+            }
+        }
+        
+        // Create log directory if not exists
+        if (!is_dir('storage/logs')) {
+            mkdir('storage/logs', 0755, true);
+        }
+        
+        $this->output->writeln('<fg=green>✓ File permissions set</>');
+    }
+    
+    private function chmodRecursive($dir, $mode)
+    {
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($dir, RecursiveDirectoryIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::SELF_FIRST
+        );
+        
+        foreach ($iterator as $item) {
+            chmod($item, $mode);
+        }
+    }
+    
+    private function createHealthCheck()
+    {
+        $routesFile = 'routes/web.php';
+        if (file_exists($routesFile)) {
+            $routes = file_get_contents($routesFile);
+            
+            if (strpos($routes, '/health') === false) {
+                $healthRoute = "
+// Health check endpoint (auto-generated)
+Route::get('/health', function () {
+    return response()->json([
+        'status' => 'ok',
+        'timestamp' => now()->toISOString(),
+        'app' => config('app.name'),
+        'environment' => config('app.env'),
+        'version' => '1.0.0'
+    ]);
+});
+";
+                file_put_contents($routesFile, $routes . $healthRoute);
+                $this->output->writeln('<fg=green>✓ Health check endpoint created</>');
+            }
+        }
+    }
+    
+    private function printSuccess()
+    {
+        $this->output->writeln('<fg=green>');
+        $this->output->writeln('🎉 Installation completed successfully!');
+        $this->output->writeln('');
+        $this->output->writeln('Next steps:');
+        $this->output->writeln('• Configure your web server to point to public/ directory');
+        $this->output->writeln('• Update database credentials in .env file');
+        $this->output->writeln('• Test your application');
+        $this->output->writeln('• Check health endpoint at /health');
+        $this->output->writeln('</>');
+    }
+    
+    private function printError($message)
+    {
+        $this->output->writeln("<fg=red>❌ {$message}</>");
+    }
+}
+
+// Bootstrap the application
+$kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
+$kernel->bootstrap();
+
+// Run the installer
+$installer = new LaravelInstaller();
+$installer->install();

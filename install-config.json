@@ -1,0 +1,284 @@
+{
+    "name": "Tammer Loyalty System Auto Installer",
+    "version": "1.0.0",
+    "description": "نظام التثبيت التلقائي لنظام الولاء - Automatic installation system for loyalty platform",
+    "author": "Assistant",
+    "created_at": "2024-01-13",
+    
+    "environments": {
+        "cloudways": {
+            "description": "Cloudways hosting environment",
+            "php_version": "8.2+",
+            "web_server": "apache/nginx",
+            "database": "mysql",
+            "ssl": true,
+            "specific_configs": {
+                "user_ini_optimizations": true,
+                "htaccess_security": true,
+                "cache_optimizations": true
+            }
+        },
+        "cpanel": {
+            "description": "cPanel shared hosting",
+            "php_version": "8.1+",
+            "web_server": "apache",
+            "database": "mysql",
+            "ssl": "auto",
+            "specific_configs": {
+                "subdirectory_support": true,
+                "file_manager_friendly": true
+            }
+        },
+        "vps": {
+            "description": "VPS/Dedicated server",
+            "php_version": "8.2+",
+            "web_server": "nginx/apache",
+            "database": "mysql/postgresql",
+            "ssl": "letsencrypt",
+            "specific_configs": {
+                "full_server_control": true,
+                "custom_optimizations": true
+            }
+        }
+    },
+    
+    "installation_steps": [
+        {
+            "step": 1,
+            "name": "Environment Detection",
+            "description": "Detect hosting environment and server configuration",
+            "required": true,
+            "timeout": 30
+        },
+        {
+            "step": 2,
+            "name": "PHP Requirements Check",
+            "description": "Verify PHP version and required extensions",
+            "required": true,
+            "timeout": 60
+        },
+        {
+            "step": 3,
+            "name": "Composer Installation",
+            "description": "Install Composer and PHP dependencies",
+            "required": true,
+            "timeout": 300
+        },
+        {
+            "step": 4,
+            "name": "Environment Configuration",
+            "description": "Create and configure .env file",
+            "required": true,
+            "timeout": 60
+        },
+        {
+            "step": 5,
+            "name": "Database Setup",
+            "description": "Run migrations and seeders",
+            "required": false,
+            "timeout": 120
+        },
+        {
+            "step": 6,
+            "name": "Asset Compilation",
+            "description": "Install Node dependencies and build assets",
+            "required": false,
+            "timeout": 180
+        },
+        {
+            "step": 7,
+            "name": "Application Optimization",
+            "description": "Cache routes, config, and views",
+            "required": true,
+            "timeout": 60
+        },
+        {
+            "step": 8,
+            "name": "Security Configuration",
+            "description": "Set file permissions and security headers",
+            "required": true,
+            "timeout": 30
+        },
+        {
+            "step": 9,
+            "name": "Health Check Setup",
+            "description": "Create monitoring and health check endpoints",
+            "required": true,
+            "timeout": 30
+        },
+        {
+            "step": 10,
+            "name": "Final Testing",
+            "description": "Test installation and create deployment info",
+            "required": true,
+            "timeout": 60
+        }
+    ],
+    
+    "php_requirements": {
+        "minimum_version": "8.2.0",
+        "recommended_version": "8.3.0",
+        "required_extensions": [
+            "curl",
+            "fileinfo", 
+            "gd",
+            "mbstring",
+            "openssl",
+            "pdo",
+            "pdo_mysql",
+            "tokenizer",
+            "xml",
+            "zip",
+            "json",
+            "bcmath",
+            "ctype"
+        ],
+        "recommended_extensions": [
+            "redis",
+            "imagick",
+            "exif",
+            "intl",
+            "soap"
+        ],
+        "memory_limit": "256M",
+        "max_execution_time": "300"
+    },
+    
+    "database_config": {
+        "supported_drivers": ["mysql", "postgresql", "sqlite"],
+        "preferred_driver": "mysql",
+        "charset": "utf8mb4",
+        "collation": "utf8mb4_unicode_ci",
+        "engine": "InnoDB"
+    },
+    
+    "security_settings": {
+        "app_debug": false,
+        "log_level": "error",
+        "session_secure": true,
+        "https_only": true,
+        "csrf_protection": true,
+        "sql_injection_protection": true,
+        "xss_protection": true
+    },
+    
+    "performance_optimizations": {
+        "opcache": {
+            "enable": true,
+            "memory_consumption": 128,
+            "max_accelerated_files": 4000
+        },
+        "laravel_caching": {
+            "config_cache": true,
+            "route_cache": true,
+            "view_cache": true,
+            "event_cache": true
+        },
+        "compression": {
+            "gzip": true,
+            "brotli": false
+        },
+        "browser_caching": {
+            "css_js": "1 year",
+            "images": "1 year",
+            "fonts": "1 year"
+        }
+    },
+    
+    "apple_wallet_config": {
+        "team_id": "6SGU7C9M42",
+        "pass_type_id": "pass.com.tammer.loyaltycard",
+        "certificate_path": "certs/tammer.wallet.p12",
+        "wwdr_certificate_path": "certs/AppleWWDRCAG3.pem",
+        "organization_name": "TammerLoyalty",
+        "required_files": [
+            "certs/tammer.wallet.p12",
+            "certs/AppleWWDRCAG3.pem",
+            "storage/wallet-icons/icon.png",
+            "storage/wallet-icons/logo.png"
+        ]
+    },
+    
+    "post_installation_checks": [
+        {
+            "name": "Laravel Health Check",
+            "endpoint": "/health",
+            "expected_status": 200,
+            "expected_response": {"status": "ok"}
+        },
+        {
+            "name": "Database Connection",
+            "command": "php artisan migrate:status",
+            "expected_exit_code": 0
+        },
+        {
+            "name": "Cache System",
+            "command": "php artisan cache:clear",
+            "expected_exit_code": 0
+        },
+        {
+            "name": "File Permissions",
+            "paths": ["storage", "bootstrap/cache"],
+            "expected_permissions": "755"
+        },
+        {
+            "name": "Apple Wallet Certificates",
+            "files": [
+                "certs/tammer.wallet.p12",
+                "certs/AppleWWDRCAG3.pem"
+            ],
+            "required": true
+        }
+    ],
+    
+    "troubleshooting": {
+        "common_issues": [
+            {
+                "issue": "500 Internal Server Error",
+                "solutions": [
+                    "Check file permissions on storage and bootstrap/cache directories",
+                    "Verify .env file exists and APP_KEY is generated",
+                    "Clear all caches with php artisan optimize:clear",
+                    "Check PHP error logs"
+                ]
+            },
+            {
+                "issue": "Database Connection Error",
+                "solutions": [
+                    "Verify database credentials in .env file",
+                    "Ensure database exists",
+                    "Check database server is running",
+                    "Test connection with mysql command"
+                ]
+            },
+            {
+                "issue": "Apple Wallet Issues",
+                "solutions": [
+                    "Verify certificate files exist and are readable",
+                    "Check certificate password in .env",
+                    "Ensure TEAM_ID and PASS_TYPE_ID are correct",
+                    "Validate certificate expiration dates"
+                ]
+            },
+            {
+                "issue": "Permission Denied",
+                "solutions": [
+                    "Set proper ownership: chown -R www-data:www-data /path/to/project",
+                    "Set directory permissions: chmod -R 755 storage bootstrap/cache",
+                    "Check SELinux policies if applicable"
+                ]
+            }
+        ]
+    },
+    
+    "maintenance": {
+        "backup_before_install": true,
+        "backup_locations": [
+            ".env.backup.{timestamp}",
+            "database_backup_{timestamp}.sql",
+            "files_backup_{timestamp}.tar.gz"
+        ],
+        "log_file": "storage/logs/installation.log",
+        "deployment_script": "deploy-cloudways.sh"
+    }
+}

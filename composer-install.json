@@ -1,0 +1,30 @@
+{
+    "scripts": {
+        "post-install-cmd": [
+            "@php -r \"if (!file_exists('.env')) { copy('.env.example', '.env'); echo '.env file created from .env.example\\n'; }\"",
+            "@php artisan key:generate --ansi --force",
+            "@php -r \"if (!is_dir('storage/logs')) { mkdir('storage/logs', 0755, true); echo 'Created storage/logs directory\\n'; }\"",
+            "@php -r \"if (!is_dir('bootstrap/cache')) { mkdir('bootstrap/cache', 0755, true); echo 'Created bootstrap/cache directory\\n'; }\"",
+            "chmod -R 755 storage",
+            "chmod -R 755 bootstrap/cache",
+            "@php artisan storage:link",
+            "@php artisan config:cache",
+            "@php artisan route:cache",
+            "@php artisan view:cache",
+            "echo 'Laravel installation completed successfully!'"
+        ],
+        "post-update-cmd": [
+            "@php artisan migrate --force",
+            "@php artisan config:cache",
+            "@php artisan route:cache", 
+            "@php artisan view:cache",
+            "chmod -R 755 storage",
+            "chmod -R 755 bootstrap/cache",
+            "echo 'Laravel update completed successfully!'"
+        ],
+        "post-autoload-dump": [
+            "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
+            "@php artisan package:discover --ansi"
+        ]
+    }
+}
