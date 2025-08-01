@@ -17,6 +17,22 @@
                     </div>
                 </div>
 
+                @if ($errors->any())
+                    <div class="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+                        <ul class="list-disc list-inside">
+                            @foreach ($errors->all() as $error)
+                                <li>{{ $error }}</li>
+                            @endforeach
+                        </ul>
+                    </div>
+                @endif
+
+                @if (session('success'))
+                    <div class="mb-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">
+                        {{ session('success') }}
+                    </div>
+                @endif
+
                 <form action="{{ route('admin.customers.update', $customer) }}" method="POST">
                     @csrf
                     @method('PUT')
@@ -24,11 +40,19 @@
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <label for="name" class="block text-sm font-medium text-gray-700">Name</label>
-                            <input type="text" name="name" id="name" value="{{ $customer->name }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm" readonly>
+                            <input type="text" name="name" id="name" value="{{ $customer->name }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm" required>
                         </div>
                         <div>
                             <label for="email" class="block text-sm font-medium text-gray-700">Email</label>
-                            <input type="email" name="email" id="email" value="{{ $customer->email }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm" readonly>
+                            <input type="email" name="email" id="email" value="{{ $customer->email }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm" required>
+                        </div>
+                        <div>
+                            <label for="phone" class="block text-sm font-medium text-gray-700">Phone</label>
+                            <input type="tel" name="phone" id="phone" value="{{ $customer->phone }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                        </div>
+                        <div>
+                            <label for="date_of_birth" class="block text-sm font-medium text-gray-700">Date of Birth</label>
+                            <input type="date" name="date_of_birth" id="date_of_birth" value="{{ $customer->date_of_birth ? $customer->date_of_birth->format('Y-m-d') : '' }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
                         </div>
                         <div>
                             <label for="available_points" class="block text-sm font-medium text-gray-700">Available Points</label>

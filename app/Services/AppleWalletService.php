@@ -4,8 +4,11 @@ namespace App\Services;
 
 use App\Models\AppleWalletPass;
 use App\Models\Customer;
+use App\Models\WalletDesignSettings;
+use App\Models\Logo;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Http;
 use ZipArchive;
 
 class AppleWalletService
@@ -27,6 +30,8 @@ class AppleWalletService
 
     public function generatePass(Customer $customer)
     {
+        Log::info('Starting wallet pass generation', ['customer_id' => $customer->id, 'customer_name' => $customer->name]);
+        
         // Create or update Apple Wallet pass record
         $pass = AppleWalletPass::firstOrCreate(
             ['customer_id' => $customer->id],
@@ -43,12 +48,28 @@ class AppleWalletService
             $pass->generateSerialNumber()->generateAuthenticationToken()->save();
         }
 
+        Log::info('Pass record prepared', [
+            'pass_id' => $pass->id,
+            'serial_number' => $pass->serial_number,
+            'authentication_token' => $pass->authentication_token
+        ]);
+
         // Create pass directory
         $passDir = storage_path('app/passes/' . $pass->serial_number);
         if (!file_exists($passDir)) {
             mkdir($passDir, 0755, true);
+            Log::info('Created pass directory', ['directory' => $passDir]);
         }
 
+        // Get design settings for this customer
+        $designSettings = WalletDesignSettings::getCustomerSettings($customer->id);
+        $activeLogo = Logo::getActiveLogo();
+        
+        // Convert hex colors to RGB format
+        $backgroundColor = $this->hexToRgb($designSettings->background_color);
+        $textColor = $this->hexToRgb($designSettings->text_color);
+        $labelColor = $this->hexToRgb($designSettings->label_color);
+        
         // Generate pass.json
         $passJson = [
             'formatVersion' => 1,
@@ -56,13 +77,13 @@ class AppleWalletService
             'teamIdentifier' => $this->teamId,
             'serialNumber' => $pass->serial_number,
             'authenticationToken' => $pass->authentication_token,
-            'webServiceURL' => 'http://127.0.0.1:8000/api/v1/apple-wallet',
-            'organizationName' => config('app.name'),
-            'description' => 'Loyalty Card',
-            'logoText' => config('app.name'),
-            'foregroundColor' => 'rgb(255, 255, 255)',
-            'backgroundColor' => 'rgb(0, 122, 255)',
-            'labelColor' => 'rgb(255, 255, 255)',
+            'webServiceURL' => config('loyalty.bridge_url'),
+            'organizationName' => $designSettings->organization_name,
+            'description' => 'Loyalty Card - ' . $designSettings->organization_name,
+            'logoText' => $designSettings->organization_name,
+            'foregroundColor' => "rgb({$textColor['r']}, {$textColor['g']}, {$textColor['b']})",
+            'backgroundColor' => "rgb({$backgroundColor['r']}, {$backgroundColor['g']}, {$backgroundColor['b']})",
+            'labelColor' => "rgb({$labelColor['r']}, {$labelColor['g']}, {$labelColor['b']})",
             'storeCard' => [
                 'headerFields' => [
                     [
@@ -74,7 +95,7 @@ class AppleWalletService
                 'primaryFields' => [
                     [
                         'key' => 'name',
-                        'label' => 'Member',
+                        'label' => '💎 Member',
                         'value' => $customer->name
                     ]
                 ],
@@ -147,7 +168,96 @@ class AppleWalletService
 
     private function createPassImages($passDir)
     {
-        // Create a simple transparent PNG as placeholder
+        Log::info('Creating pass images', ['pass_dir' => $passDir]);
+        
+        // Get the active logo from database
+        $activeLogo = Logo::getActiveLogo();
+        
+        if ($activeLogo) {
+            Log::info('Found active logo', [
+                'logo_id' => $activeLogo->id,
+                'logo_name' => $activeLogo->name,
+                'external_url' => $activeLogo->external_url,
+                'file_path' => $activeLogo->file_path
+            ]);
+            
+            $logoContent = null;
+            
+            // Check if logo has external URL
+            if ($activeLogo->external_url) {
+                try {
+                    Log::info('Attempting to download logo from external URL', ['url' => $activeLogo->external_url]);
+                    
+                    // Download logo from external URL
+                    $response = Http::timeout(30)->get($activeLogo->external_url);
+                    if ($response->successful()) {
+                        $logoContent = $response->body();
+                        Log::info('Successfully downloaded logo from external URL', [
+                            'logo_id' => $activeLogo->id,
+                            'logo_name' => $activeLogo->name,
+                            'external_url' => $activeLogo->external_url,
+                            'content_size' => strlen($logoContent)
+                        ]);
+                    } else {
+                        Log::warning('Failed to download logo from external URL - HTTP error', [
+                            'logo_id' => $activeLogo->id,
+                            'external_url' => $activeLogo->external_url,
+                            'status_code' => $response->status()
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('Failed to download logo from external URL - Exception', [
+                        'logo_id' => $activeLogo->id,
+                        'external_url' => $activeLogo->external_url,
+                        'error' => $e->getMessage()
+                    ]);
+                }
+            } elseif (Storage::exists($activeLogo->file_path)) {
+                // Use the actual logo from storage
+                $logoContent = Storage::get($activeLogo->file_path);
+                Log::info('Using logo from local storage', [
+                    'logo_id' => $activeLogo->id,
+                    'logo_name' => $activeLogo->name,
+                    'logo_path' => $activeLogo->file_path,
+                    'content_size' => strlen($logoContent)
+                ]);
+            } else {
+                Log::warning('Logo file not found in storage', [
+                    'logo_id' => $activeLogo->id,
+                    'file_path' => $activeLogo->file_path
+                ]);
+            }
+            
+            if ($logoContent) {
+                // Standard logo sizes for Apple Wallet
+                file_put_contents($passDir . '/logo.png', $logoContent);
+                file_put_contents($passDir . '/logo@2x.png', $logoContent);
+                file_put_contents($passDir . '/logo@3x.png', $logoContent);
+                
+                // Use the same logo for icon images
+                file_put_contents($passDir . '/icon.png', $logoContent);
+                file_put_contents($passDir . '/icon@2x.png', $logoContent);
+                file_put_contents($passDir . '/icon@3x.png', $logoContent);
+                
+                Log::info('Logo files successfully created in pass directory', [
+                    'logo_id' => $activeLogo->id,
+                    'logo_name' => $activeLogo->name,
+                    'files_created' => [
+                        'logo.png',
+                        'logo@2x.png', 
+                        'logo@3x.png',
+                        'icon.png',
+                        'icon@2x.png',
+                        'icon@3x.png'
+                    ]
+                ]);
+                return;
+            }
+        } else {
+            Log::warning('No active logo found in database');
+        }
+        
+        // Fallback to placeholder if no active logo or download failed
         $logoContent = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
         
         // Standard logo sizes for Apple Wallet
@@ -159,6 +269,8 @@ class AppleWalletService
         file_put_contents($passDir . '/icon.png', $logoContent);
         file_put_contents($passDir . '/icon@2x.png', $logoContent);
         file_put_contents($passDir . '/icon@3x.png', $logoContent);
+        
+        Log::warning('Using placeholder logo for wallet pass');
     }
 
     private function createManifest($passDir)
@@ -282,5 +394,23 @@ class AppleWalletService
     {
         // This method can be used for additional signing operations
         return $passData;
+    }
+
+    /**
+     * Convert hex color to RGB array
+     */
+    private function hexToRgb($hex)
+    {
+        $hex = ltrim($hex, '#');
+        
+        if (strlen($hex) === 3) {
+            $hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
+        }
+        
+        return [
+            'r' => hexdec(substr($hex, 0, 2)),
+            'g' => hexdec(substr($hex, 2, 2)),
+            'b' => hexdec(substr($hex, 4, 2))
+        ];
     }
 }

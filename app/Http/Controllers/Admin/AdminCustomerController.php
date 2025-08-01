@@ -7,11 +7,14 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use App\Models\Customer;
 use App\Models\WalletDesignSettings;
+use App\Models\Logo;
 use App\Services\AppleWalletPushService;
 use App\Services\AppleWalletUpdateService;
 use App\Notifications\WalletPassCreatedNotification;
 use App\Notifications\WalletDesignUpdatedNotification;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Http;
 use Chiiya\Passes\Apple\Components\Barcode;
 use Chiiya\Passes\Apple\Components\Field;
 use Chiiya\Passes\Apple\Components\SecondaryField;
@@ -37,7 +40,7 @@ class AdminCustomerController extends Controller
      */
     public function create()
     {
-        //
+        return view('admin.customers.create');
     }
 
     /**
@@ -45,7 +48,61 @@ class AdminCustomerController extends Controller
      */
     public function store(Request $request)
     {
-        //
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|unique:customers,email',
+            'phone' => 'nullable|string|max:20',
+            'birth_date' => 'nullable|date',
+            'address' => 'nullable|string|max:500',
+            'notes' => 'nullable|string|max:1000',
+            'initial_points' => 'nullable|integer|min:0',
+            'card_number' => 'nullable|string|max:50|unique:loyalty_cards,card_number'
+        ]);
+
+        try {
+            // Create customer with initial points
+            $customer = Customer::create([
+                'name' => $request->name,
+                'email' => $request->email,
+                'phone' => $request->phone,
+                'date_of_birth' => $request->birth_date,
+                'total_points' => $request->initial_points ?? 0,
+                'available_points' => $request->initial_points ?? 0,
+                'joined_at' => now(),
+            ]);
+
+            // Generate card number if not provided
+            $cardNumber = $request->card_number;
+            if (!$cardNumber) {
+                $cardNumber = 'CARD' . str_pad($customer->id, 8, '0', STR_PAD_LEFT);
+            }
+
+            // Create loyalty card
+            $customer->loyaltyCards()->create([
+                'card_number' => $cardNumber,
+                'status' => 'active',
+                'issued_at' => now(),
+            ]);
+
+            // Log the creation
+            Log::info('Customer created successfully', [
+                'customer_id' => $customer->id,
+                'email' => $customer->email,
+                'card_number' => $cardNumber
+            ]);
+
+            return redirect()->route('admin.customers.index')
+                ->with('success', 'تم إنشاء العميل بنجاح!');
+
+        } catch (\Exception $e) {
+            Log::error('Failed to create customer', [
+                'error' => $e->getMessage(),
+                'data' => $request->all()
+            ]);
+
+            return back()->withErrors(['error' => 'فشل في إنشاء العميل: ' . $e->getMessage()])
+                ->withInput();
+        }
     }
 
     /**
@@ -70,24 +127,56 @@ class AdminCustomerController extends Controller
     public function update(Request $request, Customer $customer)
     {
         $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|unique:customers,email,' . $customer->id,
+            'phone' => 'nullable|string|max:20',
+            'date_of_birth' => 'nullable|date',
             'points_to_add' => 'nullable|integer|min:0',
             'points_to_redeem' => 'nullable|integer|min:0',
             'description' => 'nullable|string|max:255',
         ]);
 
-        if ($request->filled('points_to_add')) {
-            $customer->earnPoints($request->points_to_add, $request->description);
-        }
+        try {
+            // Update customer information
+            $customer->update([
+                'name' => $request->name,
+                'email' => $request->email,
+                'phone' => $request->phone,
+                'date_of_birth' => $request->date_of_birth,
+            ]);
 
-        if ($request->filled('points_to_redeem')) {
-            try {
-                $customer->redeemPoints($request->points_to_redeem, $request->description);
-            } catch (\Exception $e) {
-                return back()->withErrors(['msg' => $e->getMessage()]);
+            // Handle points adjustments
+            if ($request->filled('points_to_add')) {
+                $customer->earnPoints($request->points_to_add, $request->description);
             }
-        }
 
-        return redirect()->route('admin.customers.index')->with('success', 'Customer updated successfully.');
+            if ($request->filled('points_to_redeem')) {
+                try {
+                    $customer->redeemPoints($request->points_to_redeem, $request->description);
+                } catch (\Exception $e) {
+                    return back()->withErrors(['msg' => $e->getMessage()]);
+                }
+            }
+
+            // Log the update
+            Log::info('Customer updated successfully', [
+                'customer_id' => $customer->id,
+                'name' => $customer->name,
+                'email' => $customer->email,
+                'changes' => $request->only(['name', 'email', 'phone', 'date_of_birth'])
+            ]);
+
+            return redirect()->route('admin.customers.index')->with('success', 'تم تحديث بيانات العميل بنجاح!');
+
+        } catch (\Exception $e) {
+            Log::error('Failed to update customer', [
+                'customer_id' => $customer->id,
+                'error' => $e->getMessage(),
+                'data' => $request->all()
+            ]);
+
+            return back()->withErrors(['error' => 'فشل في تحديث العميل: ' . $e->getMessage()]);
+        }
     }
 
     /**
@@ -130,6 +219,11 @@ class AdminCustomerController extends Controller
             // Add customer-specific fields
             $pass->primaryFields = [
                 new Field(
+                    key: 'name',
+                    value: $customer->name,
+                    label: '💎 Member'
+                ),
+                new Field(
                     key: 'balance',
                     value: number_format($customer->available_points),
                     label: 'Available Points'
@@ -165,45 +259,126 @@ class AdminCustomerController extends Controller
                 )
             ];
 
-            // Add required icon
-            $pass->addImage(new Image(
-                storage_path('wallet-icons/icon.png'),
-                ImageType::ICON
-            ));
+            // Get active logo from database
+            $activeLogo = Logo::getActiveLogo();
+            
+            if ($activeLogo) {
+                $logoPath = null;
+                
+                // Check if logo has external URL
+                if ($activeLogo->external_url) {
+                    try {
+                        // Download logo from external URL to temp file
+                        $response = Http::timeout(30)->get($activeLogo->external_url);
+                        if ($response->successful()) {
+                            $tempPath = tempnam(sys_get_temp_dir(), 'logo_');
+                            file_put_contents($tempPath, $response->body());
+                            $logoPath = $tempPath;
+                            
+                            \Log::info('Downloaded logo from external URL', [
+                                'logo_id' => $activeLogo->id,
+                                'logo_name' => $activeLogo->name,
+                                'external_url' => $activeLogo->external_url
+                            ]);
+                        }
+                    } catch (\Exception $e) {
+                        \Log::warning('Failed to download logo from external URL', [
+                            'logo_id' => $activeLogo->id,
+                            'external_url' => $activeLogo->external_url,
+                            'error' => $e->getMessage()
+                        ]);
+                    }
+                } elseif (Storage::exists($activeLogo->file_path)) {
+                    // Use the actual logo from storage
+                    $logoPath = Storage::path('public/' . $activeLogo->file_path);
+                    \Log::info('Using logo from local storage', [
+                        'logo_id' => $activeLogo->id,
+                        'logo_name' => $activeLogo->name,
+                        'logo_path' => $activeLogo->file_path
+                    ]);
+                }
+                
+                if ($logoPath) {
+                    // Add brand logo
+                    $pass->addImage(new Image($logoPath, ImageType::LOGO));
+                    
+                    // Use the same logo for icon
+                    $pass->addImage(new Image($logoPath, ImageType::ICON));
+                    
+                    \Log::info('Logo successfully added to wallet pass', [
+                        'logo_id' => $activeLogo->id,
+                        'logo_name' => $activeLogo->name
+                    ]);
+                } else {
+                    // Fallback to default icons
+                    $pass->addImage(new Image(
+                        storage_path('wallet-icons/icon.png'),
+                        ImageType::ICON
+                    ));
 
-            // Add brand logo
-            $pass->addImage(new Image(
-                storage_path('wallet-icons/logo.png'),
-                ImageType::LOGO
-            ));
+                    $pass->addImage(new Image(
+                        storage_path('wallet-icons/logo.png'),
+                        ImageType::LOGO
+                    ));
+                    
+                    \Log::warning('No active logo found or download failed, using default icons for wallet pass');
+                }
+            } else {
+                // Fallback to default icons
+                $pass->addImage(new Image(
+                    storage_path('wallet-icons/icon.png'),
+                    ImageType::ICON
+                ));
+
+                $pass->addImage(new Image(
+                    storage_path('wallet-icons/logo.png'),
+                    ImageType::LOGO
+                ));
+                
+                \Log::warning('No active logo found, using default icons for wallet pass');
+            }
 
             // Try to use P12 with environment variable workaround for LibreSSL
+            $certPath = config('app.apple_wallet_certificate_path');
+            $wwdrPath = config('app.apple_wallet_wwdr_certificate_path');
+            
             try {
                 // Set environment variables to force legacy crypto on systems like macOS
                 putenv('OPENSSL_CONF=/dev/null');
                 
+                // Check if certificate files exist
+                if (!file_exists($certPath)) {
+                    throw new \Exception("Certificate file not found: {$certPath}");
+                }
+                
+                if (!file_exists($wwdrPath)) {
+                    throw new \Exception("WWDR certificate file not found: {$wwdrPath}");
+                }
+                
                 // Create PassFactory with P12 file from config
                 $passFactory = new PassFactory([
-                    'certificate' => config('app.apple_wallet_certificate_path'),
-                    'wwdr' => config('app.apple_wallet_wwdr_certificate_path'),
-                    'password' => config('app.apple_wallet_certificate_password'),
+                    'certificate' => $certPath,
+                    'wwdr' => $wwdrPath,
+                    'password' => config('app.apple_wallet_certificate_password', ''),
                 ]);
                 
-                \Log::info('Using P12 certificate file with LibreSSL compatibility mode.', [
-                    'cert_path' => config('app.apple_wallet_certificate_path'),
-                    'wwdr_path' => config('app.apple_wallet_wwdr_certificate_path'),
+                Log::info('Using P12 certificate file with LibreSSL compatibility mode.', [
+                    'cert_path' => $certPath,
+                    'wwdr_path' => $wwdrPath,
+                    'cert_exists' => file_exists($certPath),
+                    'wwdr_exists' => file_exists($wwdrPath),
                 ]);
                 
             } catch (\Exception $e) {
                 // If P12 still fails, create unsigned pass
-                $passFactory = new PassFactory();
-                $passFactory->setSkipSignature(true);
-                
-                \Log::warning('Using unsigned pass due to certificate issues', [
+                Log::warning('Certificate setup failed, using unsigned pass', [
                     'error' => $e->getMessage(),
                     'file' => $e->getFile(),
                     'line' => $e->getLine()
                 ]);
+                
+                $passFactory = new PassFactory();
+                $passFactory->setSkipSignature(true);
             }
 
             // Generate the pass
@@ -341,56 +516,121 @@ class AdminCustomerController extends Controller
      */
     public function saveWalletDesign(Request $request, Customer $customer)
     {
-        $validated = $request->validate([
-            'organization_name' => 'required|string|max:255',
-            'background_color' => 'required|string|regex:/^#[0-9A-Fa-f]{6}$/',
-            'background_color_secondary' => 'required|string|regex:/^#[0-9A-Fa-f]{6}$/',
-            'text_color' => 'required|string|regex:/^#[0-9A-Fa-f]{6}$/',
-            'label_color' => 'required|string|regex:/^#[0-9A-Fa-f]{6}$/',
-            'background_image_url' => 'nullable|url',
-            'background_opacity' => 'nullable|integer|min:0|max:100',
-            'use_background_image' => 'nullable|boolean',
-            'apply_to' => 'required|in:customer,global'
-        ]);
+        try {
+            $validated = $request->validate([
+                'organization_name' => 'required|string|max:255',
+                'background_color' => 'required|string',
+                'background_color_secondary' => 'required|string',
+                'text_color' => 'required|string',
+                'label_color' => 'required|string',
+                'background_image_url' => 'nullable|string',
+                'background_opacity' => 'nullable|integer|min:0|max:100',
+                'use_background_image' => 'nullable|boolean',
+                'apply_to' => 'required|in:customer,global'
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            \Log::error('Validation failed: ' . json_encode($e->errors()));
+            return response()->json([
+                'success' => false,
+                'message' => 'بيانات غير صحيحة: ' . json_encode($e->errors())
+            ], 422);
+        }
 
-        $pushService = new AppleWalletPushService();
-        $updateService = app(\App\Services\AppleWalletUpdateService::class);
-        $notificationsSent = 0;
-
-        if ($validated['apply_to'] === 'global') {
-            WalletDesignSettings::saveGlobalSettings($validated);
-            
-            // Force update all customers' passes with new design
-            $updateResult = $updateService->updateAllPasses();
-            
-            // Send push notifications to all registered devices
-            $notificationsSent = $pushService->notifyGlobalDesignUpdate();
-            
-            // Send email notifications to all customers about design update
-            $this->sendGlobalDesignUpdateNotifications($validated);
-            
-            $message = 'تم حفظ إعدادات التصميم العامة وتم تحديث ' . $updateResult['successful_updates'] . ' بطاقة وتم إرسال ' . $notificationsSent . ' إشعار للأجهزة المسجلة.';
-        } else {
-            WalletDesignSettings::saveCustomerSettings($customer->id, $validated);
-            
-            // Force update this customer's pass with new design
-            $updateResult = $updateService->forceUpdateCustomerPass($customer);
-            
-            // Send push notifications to this customer's registered devices
-            $notificationsSent = $pushService->notifyCustomerPassUpdates($customer->id);
-            
-            // Send email notification to customer about design update
-            $this->sendCustomerDesignUpdateNotification($customer, $validated);
-            
-            $message = 'تم حفظ إعدادات التصميم لهذا العميل وتم تحديث البطاقة وتم إرسال ' . $notificationsSent . ' إشعار.';
+        \Log::info('Saving wallet design settings', ['validated' => $validated, 'customer_id' => $customer->id]);
+        
+        try {
+            if ($validated['apply_to'] === 'global') {
+                \Log::info('Saving global settings');
+                WalletDesignSettings::saveGlobalSettings($validated);
+                
+                // إرسال التحديث للملف المركزي
+                $this->sendToWalletBridge('update/global', $validated);
+                
+                // إعادة إنشاء جميع البطاقات لتطبيق التصميم الجديد
+                $this->regenerateAllWalletPasses();
+                
+                $message = 'تم حفظ إعدادات التصميم العامة وإعادة إنشاء جميع البطاقات بنجاح.';
+            } else {
+                \Log::info('Saving customer settings for customer: ' . $customer->id);
+                WalletDesignSettings::saveCustomerSettings($customer->id, $validated);
+                
+                // إرسال التحديث للملف المركزي
+                $this->sendToWalletBridge("update/design/{$customer->id}", $validated);
+                
+                // إعادة إنشاء بطاقة العميل المحدد
+                $this->regenerateCustomerWalletPass($customer);
+                
+                $message = 'تم حفظ إعدادات التصميم وإعادة إنشاء بطاقة العميل بنجاح.';
+            }
+            \Log::info('Settings saved and wallet passes regenerated successfully');
+        } catch (\Exception $e) {
+            \Log::error('Error saving wallet design settings: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return response()->json([
+                'success' => false,
+                'message' => 'حدث خطأ أثناء حفظ الإعدادات: ' . $e->getMessage()
+            ], 500);
         }
 
         return response()->json([
             'success' => true,
-            'message' => $message,
-            'notifications_sent' => $notificationsSent,
-            'passes_updated' => $validated['apply_to'] === 'global' ? $updateResult['successful_updates'] : 1
+            'message' => $message
         ]);
+    }
+
+    /**
+     * إرسال البيانات للملف المركزي (Bridge)
+     */
+    private function sendToWalletBridge($endpoint, $data)
+    {
+        $bridgeUrl = config('wallet.bridge_url', 'https://your-server.com/wallet_bridge.php');
+        $bridgeSecret = config('wallet.bridge_secret', 'your-secret-key-here');
+        
+        try {
+            $ch = curl_init();
+            
+            curl_setopt($ch, CURLOPT_URL, $bridgeUrl . '/' . $endpoint);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Content-Type: application/json',
+                'X-Bridge-Secret: ' . $bridgeSecret,
+                'User-Agent: LoyaltyDashboard/1.0'
+            ]);
+            
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $error = curl_error($ch);
+            curl_close($ch);
+            
+            \Log::info('Bridge request sent', [
+                'endpoint' => $endpoint,
+                'data' => $data,
+                'http_code' => $httpCode,
+                'response' => $response,
+                'error' => $error
+            ]);
+            
+            if ($error) {
+                \Log::warning('Bridge connection failed: ' . $error);
+                return false;
+            }
+            
+            if ($httpCode >= 200 && $httpCode < 300) {
+                \Log::info('Bridge update successful');
+                return true;
+            } else {
+                \Log::warning('Bridge update failed with HTTP code: ' . $httpCode);
+                return false;
+            }
+            
+        } catch (\Exception $e) {
+            \Log::error('Bridge communication error: ' . $e->getMessage());
+            return false;
+        }
     }
 
     /**
@@ -398,20 +638,42 @@ class AdminCustomerController extends Controller
      */
     public function saveGlobalWalletDesign(Request $request)
     {
-        $validated = $request->validate([
-            'organization_name' => 'required|string|max:255',
-            'background_color' => 'required|string|regex:/^#[0-9A-Fa-f]{6}$/',
-            'background_color_secondary' => 'required|string|regex:/^#[0-9A-Fa-f]{6}$/',
-            'text_color' => 'required|string|regex:/^#[0-9A-Fa-f]{6}$/',
-            'label_color' => 'required|string|regex:/^#[0-9A-Fa-f]{6}$/',
-        ]);
+        try {
+            $validated = $request->validate([
+                'organization_name' => 'required|string|max:255',
+                'background_color' => 'required|string|regex:/^#[0-9A-Fa-f]{6}$/',
+                'background_color_secondary' => 'required|string|regex:/^#[0-9A-Fa-f]{6}$/',
+                'text_color' => 'required|string|regex:/^#[0-9A-Fa-f]{6}$/',
+                'label_color' => 'required|string|regex:/^#[0-9A-Fa-f]{6}$/',
+            ]);
 
-        WalletDesignSettings::saveGlobalSettings($validated);
+            \Log::info('Saving global wallet design settings', ['validated' => $validated]);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'تم حفظ الإعدادات العامة. ستؤثر على جميع العملاء.'
-        ]);
+            // حفظ الإعدادات العامة
+            WalletDesignSettings::saveGlobalSettings($validated);
+
+            // إعادة إنشاء جميع البطاقات لتطبيق التصميم الجديد
+            $regenerationResult = $this->regenerateAllWalletPasses();
+
+            \Log::info('Global design settings saved and wallet passes regenerated', [
+                'regeneration_result' => $regenerationResult
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'تم حفظ الإعدادات العامة وإعادة إنشاء جميع البطاقات بنجاح.',
+                'regeneration_stats' => $regenerationResult
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Failed to save global wallet design', [
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'حدث خطأ أثناء حفظ الإعدادات: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
@@ -524,6 +786,75 @@ class AdminCustomerController extends Controller
                 'success' => false,
                 'error' => 'Update failed: ' . $e->getMessage()
             ], 500);
+        }
+    }
+
+    /**
+     * إعادة إنشاء بطاقة عميل محدد
+     */
+    private function regenerateCustomerWalletPass(Customer $customer)
+    {
+        try {
+            \Log::info('Regenerating wallet pass for customer', ['customer_id' => $customer->id]);
+            
+            // إعادة إنشاء البطاقة
+            $this->generateWalletPass($customer);
+            
+            \Log::info('Wallet pass regenerated successfully', ['customer_id' => $customer->id]);
+            
+            return true;
+        } catch (\Exception $e) {
+            \Log::error('Failed to regenerate wallet pass', [
+                'customer_id' => $customer->id,
+                'error' => $e->getMessage()
+            ]);
+            
+            throw $e;
+        }
+    }
+
+    /**
+     * إعادة إنشاء جميع البطاقات
+     */
+    private function regenerateAllWalletPasses()
+    {
+        try {
+            \Log::info('Starting regeneration of all wallet passes');
+            
+            $customers = Customer::with('loyaltyCards')->get();
+            $successCount = 0;
+            $errorCount = 0;
+            
+            foreach ($customers as $customer) {
+                try {
+                    $this->regenerateCustomerWalletPass($customer);
+                    $successCount++;
+                } catch (\Exception $e) {
+                    $errorCount++;
+                    \Log::error('Failed to regenerate wallet pass for customer', [
+                        'customer_id' => $customer->id,
+                        'error' => $e->getMessage()
+                    ]);
+                }
+            }
+            
+            \Log::info('Wallet passes regeneration completed', [
+                'total_customers' => $customers->count(),
+                'success_count' => $successCount,
+                'error_count' => $errorCount
+            ]);
+            
+            return [
+                'total' => $customers->count(),
+                'success' => $successCount,
+                'errors' => $errorCount
+            ];
+        } catch (\Exception $e) {
+            \Log::error('Failed to regenerate all wallet passes', [
+                'error' => $e->getMessage()
+            ]);
+            
+            throw $e;
         }
     }
 }

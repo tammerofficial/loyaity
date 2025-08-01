@@ -67,8 +67,8 @@ class WalletDesignSettings extends Model
     {
         return (object) [
             'organization_name' => 'Tammer Loyalty',
-            'background_color' => '#1e3a8a',
-            'background_color_secondary' => '#3b82f6',
+            'background_color' => '#000000',
+            'background_color_secondary' => '#1a1a1a',
             'text_color' => '#ffffff',
             'label_color' => '#ffffff',
             'background_image_url' => null,
