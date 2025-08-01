@@ -4,12 +4,13 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use App\Jobs\GenerateWalletPassJob;
 
 class Customer extends Model
 {
-    use HasFactory, HasApiTokens;
+    use HasFactory, HasApiTokens, Notifiable;
 
     protected $fillable = [
         'name',
@@ -109,6 +110,16 @@ class Customer extends Model
         // Auto-generate wallet pass after creating customer
         static::created(function ($customer) {
             static::generateWalletPass($customer);
+            
+            // Send notification to customer about new account
+            try {
+                $customer->notify(new \App\Notifications\WalletPassCreatedNotification($customer));
+            } catch (\Exception $e) {
+                \Log::warning('Failed to send welcome notification to new customer', [
+                    'customer_id' => $customer->id,
+                    'error' => $e->getMessage()
+                ]);
+            }
         });
         
         // Auto-regenerate wallet pass after updating customer  

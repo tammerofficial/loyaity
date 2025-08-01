@@ -31,7 +31,7 @@ class AppleWalletUpdateService
             $this->regeneratePass($customer);
             
             // Send push notifications to all registered devices
-            $devices = WalletDeviceRegistration::where('pass_id', $pass->id)->get();
+            $devices = WalletDeviceRegistration::where('apple_wallet_pass_id', $pass->id)->get();
             $notifiedCount = 0;
             
             foreach ($devices as $device) {

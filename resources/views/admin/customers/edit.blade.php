@@ -7,9 +7,14 @@
             <div class="p-6 bg-white border-b border-gray-200">
                 <div class="flex justify-between items-center mb-6">
                     <h1 class="text-2xl font-bold">Edit Customer: {{ $customer->name }}</h1>
-                    <button type="button" onclick="forceUpdateWallet()" class="px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 flex items-center gap-2">
-                        🔄 تحديث البطاقة
-                    </button>
+                    <div class="flex space-x-2">
+                        <a href="{{ route('admin.notifications.customer', $customer) }}" class="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 flex items-center gap-2">
+                            📧 الإشعارات
+                        </a>
+                        <button type="button" onclick="forceUpdateWallet()" class="px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 flex items-center gap-2">
+                            🔄 تحديث البطاقة
+                        </button>
+                    </div>
                 </div>
 
                 <form action="{{ route('admin.customers.update', $customer) }}" method="POST">
@@ -101,7 +106,7 @@ function forceUpdateWallet() {
     button.innerHTML = '⏳ جاري التحديث...';
     button.disabled = true;
     
-    fetch(`/api/v1/apple-wallet/passes/{{ $customer->membership_number }}/force-update`, {
+    fetch(`/admin/customers/{{ $customer->id }}/force-update-wallet`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

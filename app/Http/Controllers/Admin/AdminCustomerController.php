@@ -8,6 +8,10 @@ use Illuminate\Http\Response;
 use App\Models\Customer;
 use App\Models\WalletDesignSettings;
 use App\Services\AppleWalletPushService;
+use App\Services\AppleWalletUpdateService;
+use App\Notifications\WalletPassCreatedNotification;
+use App\Notifications\WalletDesignUpdatedNotification;
+use Illuminate\Support\Facades\Log;
 use Chiiya\Passes\Apple\Components\Barcode;
 use Chiiya\Passes\Apple\Components\Field;
 use Chiiya\Passes\Apple\Components\SecondaryField;
@@ -113,7 +117,8 @@ class AdminCustomerController extends Controller
             );
 
             // Enable web service URL for automatic updates (points, balance, etc.)
-            $pass->webServiceURL = 'https://192.168.8.143/api/v1/apple-wallet'; // Use HTTPS for production
+            // Enable web service URL for automatic updates (points, balance, etc.)
+            $pass->webServiceURL = config('app.apple_wallet_web_service_url');
             $pass->authenticationToken = 'auth_' . $customer->membership_number . '_' . hash('sha256', time() . $customer->id);
 
 
@@ -166,6 +171,12 @@ class AdminCustomerController extends Controller
                 ImageType::ICON
             ));
 
+            // Add brand logo
+            $pass->addImage(new Image(
+                storage_path('wallet-icons/logo.png'),
+                ImageType::LOGO
+            ));
+
             // Try to use P12 with environment variable workaround for LibreSSL
             try {
                 // Set environment variables to force legacy crypto on systems like macOS
@@ -214,6 +225,21 @@ class AdminCustomerController extends Controller
 
             // Clean up temp files
             unlink($passFile->getRealPath());
+
+            // Send notification to customer about new wallet pass
+            try {
+                $passUrl = url('/admin/customers/' . $customer->id . '/wallet-qr');
+                $customer->notify(new WalletPassCreatedNotification($customer, $passUrl));
+                Log::info('Wallet pass creation notification sent to customer', [
+                    'customer_id' => $customer->id,
+                    'customer_name' => $customer->name
+                ]);
+            } catch (\Exception $e) {
+                Log::warning('Failed to send wallet pass creation notification', [
+                    'customer_id' => $customer->id,
+                    'error' => $e->getMessage()
+                ]);
+            }
 
             // Return the pass as download
             return new Response($passContent, 200, [
@@ -328,28 +354,42 @@ class AdminCustomerController extends Controller
         ]);
 
         $pushService = new AppleWalletPushService();
+        $updateService = app(\App\Services\AppleWalletUpdateService::class);
         $notificationsSent = 0;
 
         if ($validated['apply_to'] === 'global') {
             WalletDesignSettings::saveGlobalSettings($validated);
             
+            // Force update all customers' passes with new design
+            $updateResult = $updateService->updateAllPasses();
+            
             // Send push notifications to all registered devices
             $notificationsSent = $pushService->notifyGlobalDesignUpdate();
             
-            $message = 'تم حفظ إعدادات التصميم العامة وتم إرسال ' . $notificationsSent . ' إشعار للأجهزة المسجلة.';
+            // Send email notifications to all customers about design update
+            $this->sendGlobalDesignUpdateNotifications($validated);
+            
+            $message = 'تم حفظ إعدادات التصميم العامة وتم تحديث ' . $updateResult['successful_updates'] . ' بطاقة وتم إرسال ' . $notificationsSent . ' إشعار للأجهزة المسجلة.';
         } else {
             WalletDesignSettings::saveCustomerSettings($customer->id, $validated);
+            
+            // Force update this customer's pass with new design
+            $updateResult = $updateService->forceUpdateCustomerPass($customer);
             
             // Send push notifications to this customer's registered devices
             $notificationsSent = $pushService->notifyCustomerPassUpdates($customer->id);
             
-            $message = 'تم حفظ إعدادات التصميم لهذا العميل وتم إرسال ' . $notificationsSent . ' إشعار.';
+            // Send email notification to customer about design update
+            $this->sendCustomerDesignUpdateNotification($customer, $validated);
+            
+            $message = 'تم حفظ إعدادات التصميم لهذا العميل وتم تحديث البطاقة وتم إرسال ' . $notificationsSent . ' إشعار.';
         }
 
         return response()->json([
             'success' => true,
             'message' => $message,
-            'notifications_sent' => $notificationsSent
+            'notifications_sent' => $notificationsSent,
+            'passes_updated' => $validated['apply_to'] === 'global' ? $updateResult['successful_updates'] : 1
         ]);
     }
 
@@ -375,6 +415,78 @@ class AdminCustomerController extends Controller
     }
 
     /**
+     * Send email notification to customer about design update.
+     */
+    private function sendCustomerDesignUpdateNotification(Customer $customer, array $designChanges)
+    {
+        try {
+            $changes = [];
+            if (isset($designChanges['background_color'])) {
+                $changes[] = 'تم تحديث لون الخلفية';
+            }
+            if (isset($designChanges['text_color'])) {
+                $changes[] = 'تم تحديث لون النص';
+            }
+            if (isset($designChanges['organization_name'])) {
+                $changes[] = 'تم تحديث اسم المنظمة';
+            }
+            
+            $customer->notify(new WalletDesignUpdatedNotification($customer, $changes));
+            
+            Log::info('Design update notification sent to customer', [
+                'customer_id' => $customer->id,
+                'customer_name' => $customer->name,
+                'changes' => $changes
+            ]);
+        } catch (\Exception $e) {
+            Log::warning('Failed to send design update notification to customer', [
+                'customer_id' => $customer->id,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Send email notifications to all customers about global design update.
+     */
+    private function sendGlobalDesignUpdateNotifications(array $designChanges)
+    {
+        try {
+            $changes = [];
+            if (isset($designChanges['background_color'])) {
+                $changes[] = 'تم تحديث لون الخلفية';
+            }
+            if (isset($designChanges['text_color'])) {
+                $changes[] = 'تم تحديث لون النص';
+            }
+            if (isset($designChanges['organization_name'])) {
+                $changes[] = 'تم تحديث اسم المنظمة';
+            }
+            
+            $customers = Customer::all();
+            foreach ($customers as $customer) {
+                try {
+                    $customer->notify(new WalletDesignUpdatedNotification($customer, $changes));
+                } catch (\Exception $e) {
+                    Log::warning('Failed to send global design update notification to customer', [
+                        'customer_id' => $customer->id,
+                        'error' => $e->getMessage()
+                    ]);
+                }
+            }
+            
+            Log::info('Global design update notifications sent to all customers', [
+                'total_customers' => $customers->count(),
+                'changes' => $changes
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to send global design update notifications', [
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
      * Convert hex color to rgb format required by Apple Wallet.
      */
     private function hexToRgb($hex)
@@ -388,5 +500,30 @@ class AdminCustomerController extends Controller
         $b = hexdec(substr($hex, 4, 2));
         
         return "rgb($r, $g, $b)";
+    }
+
+    /**
+     * Force update wallet pass for customer
+     */
+    public function forceUpdateWallet(Customer $customer)
+    {
+        try {
+            // Use the update service to force update the pass
+            $updateService = app(\App\Services\AppleWalletUpdateService::class);
+            $result = $updateService->forceUpdateCustomerPass($customer);
+
+            return response()->json($result);
+
+        } catch (\Exception $e) {
+            \Log::error('Force update wallet failed', [
+                'customer_id' => $customer->id,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Update failed: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }

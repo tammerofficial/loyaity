@@ -134,5 +134,6 @@ return [
     'apple_wallet_certificate_password' => env('APPLE_WALLET_CERTIFICATE_PASSWORD', ''),
     'apple_wallet_wwdr_certificate_path' => storage_path(env('APPLE_WALLET_WWDR_CERTIFICATE_PATH', 'certs/AppleWWDRCAG3.pem')),
     'apple_wallet_organization_name' => env('APPLE_WALLET_ORGANIZATION_NAME', 'Tammer Loyalty System'),
+    'apple_wallet_web_service_url' => env('APPLE_WALLET_WEB_SERVICE_URL', 'https://phpstack-1446204-5743070.cloudwaysapps.com/api/v1/apple-wallet'),
 
 ];

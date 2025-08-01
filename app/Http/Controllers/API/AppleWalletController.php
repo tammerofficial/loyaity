@@ -102,7 +102,7 @@ class AppleWalletController extends Controller
             'teamIdentifier' => env('APPLE_WALLET_TEAM_ID'),
             'serialNumber' => $pass->serial_number,
             'authenticationToken' => $pass->authentication_token,
-            'webServiceURL' => url('/api/apple-wallet'),
+            'webServiceURL' => 'http://127.0.0.1:8000/api/v1/apple-wallet',
             'organizationName' => $designSettings->organization_name,
             'description' => 'Loyalty Card',
             'logoText' => $designSettings->organization_name,

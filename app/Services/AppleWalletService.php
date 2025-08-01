@@ -56,7 +56,7 @@ class AppleWalletService
             'teamIdentifier' => $this->teamId,
             'serialNumber' => $pass->serial_number,
             'authenticationToken' => $pass->authentication_token,
-            'webServiceURL' => url('/api/apple-wallet'),
+            'webServiceURL' => 'http://127.0.0.1:8000/api/v1/apple-wallet',
             'organizationName' => config('app.name'),
             'description' => 'Loyalty Card',
             'logoText' => config('app.name'),

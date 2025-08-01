@@ -59,7 +59,7 @@ class AppleWalletPass extends Model
             'teamIdentifier' => config('apple-wallet.team_id'),
             'serialNumber' => $this->serial_number,
             'authenticationToken' => $this->authentication_token,
-            'webServiceURL' => url('/api/apple-wallet'),
+            'webServiceURL' => 'http://127.0.0.1:8000/api/v1/apple-wallet',
             'storeCard' => [
                 'headerFields' => [
                     [
