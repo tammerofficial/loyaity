@@ -3,8 +3,9 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\AdminCustomerController;
-use App\Http\Controllers\Admin\NotificationController;
+use App\Http\Controllers\Admin\WalletManagementController;
 use App\Http\Controllers\Admin\LogoController;
+use App\Http\Controllers\Admin\NotificationController;
 
 Route::get('/', function () {
     return redirect()->route('admin.dashboard');
@@ -12,48 +13,41 @@ Route::get('/', function () {
 
 // Admin Routes
 Route::prefix('admin')->name('admin.')->group(function () {
-    Route::get('/', function () {
-        return redirect()->route('admin.dashboard');
-    });
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    
+    // Customer Routes
     Route::resource('customers', AdminCustomerController::class);
-    Route::get('/customers/{customer}/wallet-pass', [AdminCustomerController::class, 'generateWalletPass'])->name('customers.wallet-pass');
-    Route::get('/customers/{customer}/wallet-qr', [AdminCustomerController::class, 'showWalletQR'])->name('customers.wallet-qr');
-    Route::get('/customers/{customer}/wallet-preview', [AdminCustomerController::class, 'previewWalletDesign'])->name('customers.wallet-preview');
-    Route::post('/customers/{customer}/wallet-design', [AdminCustomerController::class, 'saveWalletDesign'])->name('customers.wallet-design');
-    Route::post('/wallet-design/global', [AdminCustomerController::class, 'saveGlobalWalletDesign'])->name('wallet-design.global');
-    Route::post('/customers/{customer}/force-update-wallet', [AdminCustomerController::class, 'forceUpdateWallet'])->name('customers.force-update-wallet');
     
-    // Logo routes
+    // Customer Wallet Routes
+    Route::prefix('customers/{customer}')->name('customers.')->group(function () {
+        Route::get('/wallet-preview', [AdminCustomerController::class, 'previewWalletDesign'])->name('wallet-preview');
+        Route::post('/wallet-design', [AdminCustomerController::class, 'saveWalletDesign'])->name('save-wallet-design');
+        Route::get('/wallet-pass', [AdminCustomerController::class, 'generateWalletPass'])->name('wallet-pass');
+        Route::get('/generate-wallet-pass', [AdminCustomerController::class, 'generateWalletPass'])->name('generate-wallet-pass');
+        Route::get('/wallet-qr', [AdminCustomerController::class, 'showWalletQR'])->name('wallet-qr');
+        Route::post('/force-update-wallet', [AdminCustomerController::class, 'forceUpdateWallet'])->name('force-update-wallet');
+    });
+    
+    // Global Wallet Design Route
+    Route::post('/wallet-design/global', [AdminCustomerController::class, 'saveGlobalWalletDesign'])->name('save-global-wallet-design');
+    
+    // Wallet Management Routes
+    Route::prefix('wallet-management')->name('wallet-management.')->group(function () {
+        Route::get('/', [WalletManagementController::class, 'index'])->name('index');
+        Route::get('/{customer}', [WalletManagementController::class, 'show'])->name('show');
+        Route::get('/statistics', [WalletManagementController::class, 'bridgeStatistics'])->name('statistics');
+        Route::post('/{customer}/add-points', [WalletManagementController::class, 'addPoints'])->name('add-points');
+        Route::post('/{customer}/redeem-points', [WalletManagementController::class, 'redeemPoints'])->name('redeem-points');
+        Route::post('/{customer}/update-points', [WalletManagementController::class, 'updatePoints'])->name('update-points');
+        Route::post('/{customer}/send-notification', [WalletManagementController::class, 'sendNotification'])->name('send-notification');
+    });
+    
+    // Logo Management Routes
     Route::resource('logos', LogoController::class);
-    Route::post('/logos/{logo}/activate', [LogoController::class, 'activate'])->name('logos.activate');
-    Route::post('/logos/{logo}/make-default', [LogoController::class, 'makeDefault'])->name('logos.make-default');
-    Route::get('/api/logos/active', [LogoController::class, 'getActiveLogo'])->name('logos.active-api');
     
-    // Notification routes
-    Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
-    Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount'])->name('notifications.unread-count');
-    Route::get('/customers/{customer}/notifications', [NotificationController::class, 'customerNotifications'])->name('notifications.customer');
-    Route::post('/notifications/{id}/mark-read', [NotificationController::class, 'markAsRead'])->name('notifications.mark-read');
-    Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllAsRead'])->name('notifications.mark-all-read');
-    Route::delete('/notifications/{id}', [NotificationController::class, 'destroy'])->name('notifications.destroy');
-});
-
-// إدارة البطاقات عبر الجسر
-Route::prefix('admin/wallet-management')->name('admin.wallet-management.')->group(function () {
-    Route::get('/', [App\Http\Controllers\Admin\WalletManagementController::class, 'index'])->name('index');
-    Route::get('/{id}', [App\Http\Controllers\Admin\WalletManagementController::class, 'show'])->name('show');
-    Route::post('/{id}/add-points', [App\Http\Controllers\Admin\WalletManagementController::class, 'addPoints'])->name('add-points');
-    Route::post('/{id}/redeem-points', [App\Http\Controllers\Admin\WalletManagementController::class, 'redeemPoints'])->name('redeem-points');
-    Route::post('/{id}/update-points', [App\Http\Controllers\Admin\WalletManagementController::class, 'updatePoints'])->name('update-points');
-    Route::post('/{id}/send-notification', [App\Http\Controllers\Admin\WalletManagementController::class, 'sendNotification'])->name('send-notification');
-    Route::get('/statistics/bridge', [App\Http\Controllers\Admin\WalletManagementController::class, 'bridgeStatistics'])->name('bridge-statistics');
-});
-
-// API endpoints لإدارة البطاقات
-Route::prefix('api/wallet-management')->name('api.wallet-management.')->group(function () {
-    Route::post('/{id}/add-points', [App\Http\Controllers\Admin\WalletManagementController::class, 'apiAddPoints'])->name('add-points');
-    Route::post('/{id}/redeem-points', [App\Http\Controllers\Admin\WalletManagementController::class, 'apiRedeemPoints'])->name('redeem-points');
-    Route::post('/{id}/update-points', [App\Http\Controllers\Admin\WalletManagementController::class, 'apiUpdatePoints'])->name('update-points');
-    Route::post('/{id}/send-notification', [App\Http\Controllers\Admin\WalletManagementController::class, 'apiSendNotification'])->name('send-notification');
+    // Notification Routes
+    Route::prefix('notifications')->name('notifications.')->group(function () {
+        Route::get('/', [NotificationController::class, 'index'])->name('index');
+        Route::get('/customer/{customer}', [NotificationController::class, 'customer'])->name('customer');
+    });
 });

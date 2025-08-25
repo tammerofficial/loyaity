@@ -4,13 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
-use App\Jobs\GenerateWalletPassJob;
 
 class Customer extends Model
 {
-    use HasFactory, HasApiTokens, Notifiable;
+    use HasFactory, HasApiTokens;
 
     protected $fillable = [
         'name',
@@ -98,45 +96,5 @@ class Customer extends Model
         }
 
         $this->save();
-    }
-    
-    /**
-     * Boot the model
-     */
-    protected static function boot()
-    {
-        parent::boot();
-        
-        // Auto-generate wallet pass after creating customer
-        static::created(function ($customer) {
-            static::generateWalletPass($customer);
-            
-            // Send notification to customer about new account
-            try {
-                $customer->notify(new \App\Notifications\WalletPassCreatedNotification($customer));
-            } catch (\Exception $e) {
-                \Log::warning('Failed to send welcome notification to new customer', [
-                    'customer_id' => $customer->id,
-                    'error' => $e->getMessage()
-                ]);
-            }
-        });
-        
-        // Auto-regenerate wallet pass after updating customer  
-        static::updated(function ($customer) {
-            // Only regenerate if membership_number, name, or tier changed
-            if ($customer->isDirty(['membership_number', 'name', 'tier', 'total_points', 'available_points'])) {
-                static::generateWalletPass($customer);
-            }
-        });
-    }
-    
-    /**
-     * Generate Apple Wallet pass file for customer (dispatch job)
-     */
-    public static function generateWalletPass($customer)
-    {
-        // Dispatch job to background queue for better performance
-        GenerateWalletPassJob::dispatch($customer->id)->delay(now()->addSeconds(2));
     }
 }

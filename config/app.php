@@ -130,9 +130,10 @@ return [
     */
     'apple_wallet_team_id' => env('APPLE_WALLET_TEAM_ID', '6SGU7C9M42'),
     'apple_wallet_pass_type_id' => env('APPLE_WALLET_PASS_TYPE_ID', 'pass.com.tammer.loyaltycard'),
-    'apple_wallet_certificate_path' => storage_path(env('APPLE_WALLET_CERTIFICATE_PATH', 'certs/tammer.wallet.p12')),
+    'apple_wallet_certificate_path' => base_path(env('APPLE_WALLET_CERTIFICATE_PATH', 'storage/certs/tammer.wallet.p12')),
+    'apple_wallet_certificate_key_path' => base_path(env('APPLE_WALLET_CERTIFICATE_KEY_PATH', 'storage/certs/pass_key.pem')),
     'apple_wallet_certificate_password' => env('APPLE_WALLET_CERTIFICATE_PASSWORD', ''),
-    'apple_wallet_wwdr_certificate_path' => storage_path(env('APPLE_WALLET_WWDR_CERTIFICATE_PATH', 'certs/AppleWWDRCAG3.pem')),
+    'apple_wallet_wwdr_certificate_path' => base_path(env('APPLE_WALLET_WWDR_CERTIFICATE_PATH', 'storage/certs/AppleWWDRCAG3.pem')),
     'apple_wallet_organization_name' => env('APPLE_WALLET_ORGANIZATION_NAME', 'Tammer Loyalty System'),
     'apple_wallet_web_service_url' => env('APPLE_WALLET_WEB_SERVICE_URL', 'https://phpstack-1446204-5743070.cloudwaysapps.com/api/v1/apple-wallet'),
 

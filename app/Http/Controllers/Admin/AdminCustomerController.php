@@ -60,6 +60,9 @@ class AdminCustomerController extends Controller
         ]);
 
         try {
+            // Generate unique membership number
+            $membershipNumber = $this->generateUniqueMembershipNumber();
+            
             // Create customer with initial points
             $customer = Customer::create([
                 'name' => $request->name,
@@ -68,6 +71,7 @@ class AdminCustomerController extends Controller
                 'date_of_birth' => $request->birth_date,
                 'total_points' => $request->initial_points ?? 0,
                 'available_points' => $request->initial_points ?? 0,
+                'membership_number' => $membershipNumber,
                 'joined_at' => now(),
             ]);
 
@@ -268,18 +272,32 @@ class AdminCustomerController extends Controller
                 // Check if logo has external URL
                 if ($activeLogo->external_url) {
                     try {
-                        // Download logo from external URL to temp file
+                        // Download logo from external URL to temp file with .png extension
                         $response = Http::timeout(30)->get($activeLogo->external_url);
                         if ($response->successful()) {
-                            $tempPath = tempnam(sys_get_temp_dir(), 'logo_');
+                            $tempPath = tempnam(sys_get_temp_dir(), 'logo_') . '.png';
                             file_put_contents($tempPath, $response->body());
-                            $logoPath = $tempPath;
                             
-                            \Log::info('Downloaded logo from external URL', [
-                                'logo_id' => $activeLogo->id,
-                                'logo_name' => $activeLogo->name,
-                                'external_url' => $activeLogo->external_url
-                            ]);
+                            // Verify the downloaded file is a valid PNG image
+                            $imageInfo = getimagesize($tempPath);
+                            if ($imageInfo && $imageInfo[2] === IMAGETYPE_PNG) {
+                                $logoPath = $tempPath;
+                                
+                                \Log::info('Downloaded logo from external URL', [
+                                    'logo_id' => $activeLogo->id,
+                                    'logo_name' => $activeLogo->name,
+                                    'external_url' => $activeLogo->external_url,
+                                    'temp_path' => $tempPath,
+                                    'image_size' => $imageInfo[0] . 'x' . $imageInfo[1]
+                                ]);
+                            } else {
+                                // Delete invalid file
+                                unlink($tempPath);
+                                \Log::warning('Downloaded file is not a valid PNG image', [
+                                    'logo_id' => $activeLogo->id,
+                                    'external_url' => $activeLogo->external_url
+                                ]);
+                            }
                         }
                     } catch (\Exception $e) {
                         \Log::warning('Failed to download logo from external URL', [
@@ -346,31 +364,40 @@ class AdminCustomerController extends Controller
                 // Set environment variables to force legacy crypto on systems like macOS
                 putenv('OPENSSL_CONF=/dev/null');
                 
+                // Get certificate paths
+                $certPath = config('app.apple_wallet_certificate_path');
+                $keyPath = config('app.apple_wallet_certificate_key_path');
+                $wwdrPath = config('app.apple_wallet_wwdr_certificate_path');
+                
                 // Check if certificate files exist
                 if (!file_exists($certPath)) {
                     throw new \Exception("Certificate file not found: {$certPath}");
+                }
+                
+                if (!file_exists($keyPath)) {
+                    throw new \Exception("Certificate key file not found: {$keyPath}");
                 }
                 
                 if (!file_exists($wwdrPath)) {
                     throw new \Exception("WWDR certificate file not found: {$wwdrPath}");
                 }
                 
-                // Create PassFactory with P12 file from config
+                // Create PassFactory with P12 certificate
                 $passFactory = new PassFactory([
                     'certificate' => $certPath,
                     'wwdr' => $wwdrPath,
                     'password' => config('app.apple_wallet_certificate_password', ''),
                 ]);
                 
-                Log::info('Using P12 certificate file with LibreSSL compatibility mode.', [
+                Log::info('Using signed pass with PEM certificate', [
+                    'customer_id' => $customer->id,
+                    'customer_name' => $customer->name,
                     'cert_path' => $certPath,
-                    'wwdr_path' => $wwdrPath,
-                    'cert_exists' => file_exists($certPath),
-                    'wwdr_exists' => file_exists($wwdrPath),
+                    'wwdr_path' => $wwdrPath
                 ]);
                 
             } catch (\Exception $e) {
-                // If P12 still fails, create unsigned pass
+                // If certificate setup fails, fall back to unsigned pass
                 Log::warning('Certificate setup failed, using unsigned pass', [
                     'error' => $e->getMessage(),
                     'file' => $e->getFile(),
@@ -400,6 +427,12 @@ class AdminCustomerController extends Controller
 
             // Clean up temp files
             unlink($passFile->getRealPath());
+            
+            // Clean up temporary logo file if it was downloaded
+            if (isset($logoPath) && $activeLogo && $activeLogo->external_url && file_exists($logoPath)) {
+                unlink($logoPath);
+                \Log::info('Cleaned up temporary logo file', ['temp_path' => $logoPath]);
+            }
 
             // Send notification to customer about new wallet pass
             try {
@@ -856,5 +889,23 @@ class AdminCustomerController extends Controller
             
             throw $e;
         }
+    }
+
+    /**
+     * Generate a unique membership number for new customers
+     */
+    private function generateUniqueMembershipNumber()
+    {
+        do {
+            // Generate a membership number with format: M + year + 6 digits
+            $year = date('Y');
+            $randomDigits = str_pad(mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
+            $membershipNumber = 'M' . $year . $randomDigits;
+            
+            // Check if this membership number already exists
+            $exists = Customer::where('membership_number', $membershipNumber)->exists();
+        } while ($exists);
+
+        return $membershipNumber;
     }
 }

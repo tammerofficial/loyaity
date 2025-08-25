@@ -6,7 +6,6 @@ use App\Http\Controllers\API\CustomerController;
 use App\Http\Controllers\API\LoyaltyCardController;
 use App\Http\Controllers\API\TransactionController;
 use App\Http\Controllers\API\AppleWalletController;
-use App\Http\Controllers\API\WalletBridgeController;
 
 /*
 |--------------------------------------------------------------------------
@@ -43,39 +42,12 @@ Route::prefix('v1')->group(function () {
         // Generate and download pass
         Route::get('customers/{customer}/pass', [AppleWalletController::class, 'generatePass']);
         
-        // Force update pass (for dashboard)
-        Route::post('passes/{serialNumber}/force-update', [AppleWalletController::class, 'forceUpdatePass']);
-        
         // Apple Wallet web service endpoints
         Route::get('passes/{passTypeId}/{serialNumber}', [AppleWalletController::class, 'getPass']);
         Route::post('devices/{deviceLibraryIdentifier}/registrations/{passTypeId}/{serialNumber}', [AppleWalletController::class, 'registerDevice']);
         Route::get('devices/{deviceLibraryIdentifier}/registrations/{passTypeId}', [AppleWalletController::class, 'getUpdates']);
         Route::delete('devices/{deviceLibraryIdentifier}/registrations/{passTypeId}/{serialNumber}', [AppleWalletController::class, 'unregisterDevice']);
         Route::post('log', [AppleWalletController::class, 'logRequest']);
-    });
-});
-
-// Wallet Bridge Routes - External Bridge API
-Route::prefix('wallet-bridge')->group(function () {
-    // System status
-    Route::get('status', [WalletBridgeController::class, 'status']);
-    
-    // Apple Wallet Web Service endpoints (for external bridge)
-    Route::get('passes/{passTypeId}/{serialNumber}', [WalletBridgeController::class, 'getPass']);
-    Route::post('devices/{deviceLibraryIdentifier}/registrations/{passTypeId}/{serialNumber}', [WalletBridgeController::class, 'registerDevice']);
-    Route::get('devices/{deviceLibraryIdentifier}/registrations/{passTypeId}', [WalletBridgeController::class, 'getDeviceUpdates']);
-    Route::delete('devices/{deviceLibraryIdentifier}/registrations/{passTypeId}/{serialNumber}', [WalletBridgeController::class, 'unregisterDevice']);
-    Route::post('log', [WalletBridgeController::class, 'logRequest']);
-    
-    // Management endpoints (require bridge secret)
-    Route::middleware('bridge.auth')->group(function () {
-        Route::post('push-notification', [WalletBridgeController::class, 'sendPushNotification']);
-        Route::post('update-pass', [WalletBridgeController::class, 'updatePassData']);
-        Route::get('logs', [WalletBridgeController::class, 'getLogs']);
-        Route::delete('logs', [WalletBridgeController::class, 'clearLogs']);
-        Route::get('test-dashboard-connection', [WalletBridgeController::class, 'testDashboardConnection']);
-        Route::get('statistics', [WalletBridgeController::class, 'getStatistics']);
-        Route::post('restart-service', [WalletBridgeController::class, 'restartService']);
     });
 });
 

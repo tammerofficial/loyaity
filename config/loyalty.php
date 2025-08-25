@@ -75,17 +75,4 @@ return [
             'points_per_unit' => 100,
         ],
     ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Wallet Bridge Configuration
-    |--------------------------------------------------------------------------
-    |
-    | Settings for the central bridge file that connects the dashboard
-    | with Apple Wallet passes on external servers.
-    |
-    */
-    
-    'bridge_url' => env('WALLET_BRIDGE_URL', 'http://192.168.8.143/applecards/loyalty_wallet_bridge.php'),
-    'bridge_secret' => env('WALLET_BRIDGE_SECRET', 'loyalty-bridge-secret-2024'),
 ];
